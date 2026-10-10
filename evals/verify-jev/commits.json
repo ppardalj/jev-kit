@@ -1,0 +1,13 @@
+[
+  { "id": "c01", "sha": "87c459c1", "kind": "frontend, Storybook title only" },
+  { "id": "c02", "sha": "71396d7a", "kind": "frontend logic" },
+  { "id": "c03", "sha": "5584707d", "kind": "backend email template + approval test" },
+  { "id": "c04", "sha": "8785f169", "kind": "backend middleware, DI, appsettings" },
+  { "id": "c05", "sha": "0259eaa1", "kind": "backend maintenance command + repository query" },
+  { "id": "c06", "sha": "139d2911", "kind": "backend domain + EF migration" },
+  { "id": "c07", "sha": "0890001f", "kind": "full stack: API contract, app, admin schema" },
+  { "id": "c08", "sha": "0ee932bb", "kind": "infra: docker-compose MinIO images" },
+  { "id": "c09", "sha": "71e652e3", "kind": "infra: every Dockerfile" },
+  { "id": "c10", "sha": "97b16206", "kind": "CI action only (control: nothing local)" },
+  { "id": "c11", "sha": "86f977d2", "kind": "acceptance and e2e specs only" }
+]
