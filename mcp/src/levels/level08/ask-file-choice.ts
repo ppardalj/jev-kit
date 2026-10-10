@@ -29,5 +29,5 @@ export async function askFileChoice(
   if (!("other" in criteria) && !("none" in criteria) && !("none_of_the_above" in criteria)) criteria.other = "None of the above";
   const { answers, usage } = await decide(state, { answer: choice(question, criteria) });
   const a = answers.answer as ChoiceAnswer;
-  return { path, choice: a.choice, confidence: a.confidence, probabilities: a.probabilities, usage };
+  return { path: state.path, choice: a.choice, confidence: a.confidence, probabilities: a.probabilities, usage };
 }

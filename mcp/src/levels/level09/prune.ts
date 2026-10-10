@@ -3,9 +3,9 @@
  * Globs and directories become a file list in code. Dependencies, VCS folders, binaries, and files over the budget drop out with a reason. The 255 cap is enforced before any call is made.
  */
 import { readdir, realpath, stat } from "node:fs/promises";
-import { isAbsolute, join, matchesGlob, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, matchesGlob, resolve, sep } from "node:path";
 import { LIMITS } from "../../core/types.ts";
-import { MAX_FILE_CHARS } from "../level08/read-state.ts";
+import { MAX_FILE_CHARS, repoPath } from "../level08/read-state.ts";
 
 export const SKIP_DIRS = new Set(["node_modules", ".git", ".sessions", "dist", "build", "coverage", ".pi"]);
 const GLOB_CHARS = /[*?[\]{}]/;
@@ -51,12 +51,16 @@ const staticPrefix = (pattern: string) => {
 const matches = (path: string, pattern: string) =>
   matchesGlob(path, pattern) || matchesGlob(path.replace(/(^|\/)\./g, "$1_"), pattern);
 
-/** Patterns are globs, files, or directories. A directory means its files, or everything below it when recursive. */
+/**
+ * Patterns are globs, files, or directories, relative to `cwd` or absolute inside it.
+ * A directory means its files, or everything below it when recursive.
+ */
 export async function expandPatterns(patterns: string[], cwd: string, recursive: boolean): Promise<string[]> {
   const out = new Set<string>();
   for (const raw of patterns) {
-    const pattern = raw.trim().replace(/^\.\//, "").replace(/\/+$/, "");
-    if (!pattern) continue;
+    const trimmed = raw.trim().replace(/^\.\//, "").replace(/\/+$/, "");
+    if (!trimmed) continue;
+    const pattern = isAbsolute(trimmed) ? repoPath(trimmed, cwd) ?? trimmed : trimmed; // outside the repo: prune reports it
     if (GLOB_CHARS.test(pattern)) {
       for await (const p of walk(staticPrefix(pattern), cwd, true)) if (matches(p, pattern)) out.add(p);
       continue;
@@ -85,12 +89,12 @@ export async function pruneFiles(paths: string[], cwd: string, cap = LIMITS.MAX_
   const skipped: Skipped[] = [];
   let bytes = 0, capped = 0;
   for (const path of paths) {
-    const full = isAbsolute(path) ? path : resolve(cwd, path);
-    const rel = relative(cwd, full);
-    if (rel.startsWith("..")) { skipped.push({ path, reason: "outside the repo" }); continue; }
+    const rel = repoPath(path, cwd);
+    if (rel === null) { skipped.push({ path, reason: "outside the repo" }); continue; }
+    const full = resolve(cwd, rel);
     if (rel.split(sep).some((part) => SKIP_DIRS.has(part))) { skipped.push({ path, reason: "skipped directory" }); continue; }
     let info;
-    try { info = await stat(full); } catch { skipped.push({ path, reason: "not found" }); continue; }
+    try { info = await stat(full); } catch { skipped.push({ path, reason: `not found, paths resolve from ${cwd}` }); continue; }
     if (!info.isFile()) continue;
     if (info.size === 0) { skipped.push({ path, reason: "empty" }); continue; }
     if (info.size > MAX_FILE_CHARS) { skipped.push({ path, reason: `too large, ${info.size} bytes` }); continue; }

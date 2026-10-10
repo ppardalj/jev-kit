@@ -28,5 +28,5 @@ export async function askFileBool(
   const questions = { answer: noul(question, criteria.yes || criteria.no ? { true: criteria.yes, false: criteria.no } : undefined) };
   const { answers, usage } = await decide(state, questions);
   const a = answers.answer as NoulAnswer;
-  return { path, answer: a.noul > 0.5, noul: a.noul, usage };
+  return { path: state.path, answer: a.noul > 0.5, noul: a.noul, usage };
 }

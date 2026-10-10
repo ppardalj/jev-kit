@@ -50,6 +50,14 @@ test("L9 B: a leading ./ and a trailing slash are the same pattern", async () =>
   assert.deepEqual(await expand(["src/auth/"]), ["src/auth/session.ts"]);
 });
 
+test("L9 B: absolute patterns inside the repo expand to repo-relative paths", async () => {
+  assert.deepEqual(await expand([`${repo}/src/**/*.ts`]), await expand(["src/**/*.ts"]));
+  assert.deepEqual(await expand([`${repo}/src/auth`, `${repo}/docs/api.md`]), ["docs/api.md", "src/auth/session.ts"]);
+  const { files, skipped } = await l9.pruneFiles(await expand(["/etc/hostname"]), repo);
+  assert.deepEqual(files, []);
+  assert.match(skipped[0].reason, /outside the repo/);
+});
+
 test("L9 B: symlinked folders are followed, and a link cycle ends the walk", async () => {
   const outside = await makeRepo({ "notes/a.md": "a" });
   const dir = await makeRepo({ "own.md": "own" });
@@ -68,7 +76,7 @@ test("L9 B: prune drops junk with a reason, and the cap holds before any call", 
   assert.match(reasons["logo.png"], /binary/);
   assert.match(reasons["empty.ts"], /empty/);
   assert.match(reasons["node_modules/dep/index.js"], /skipped directory/);
-  assert.match(reasons["missing.ts"], /not found/);
+  assert.match(reasons["missing.ts"], new RegExp(`not found, paths resolve from ${repo}`));
   assert.match(reasons["../outside.ts"], /outside the repo/);
   assert.match(reasons["src/http/invoices.ts"], /over the 2 file cap/);
 });

@@ -30,5 +30,5 @@ export async function askFileScore(
   const { answers, usage } = await decide(state, { answer: score(question, levels) });
   const a = answers.answer as ScoreAnswer;
   const top = levels.length - 1;
-  return { path, score: a.score, top, nearest: a.legend[String(Math.round(a.score))] ?? "", confidence: a.confidence, legend: a.legend, usage };
+  return { path: state.path, score: a.score, top, nearest: a.legend[String(Math.round(a.score))] ?? "", confidence: a.confidence, legend: a.legend, usage };
 }

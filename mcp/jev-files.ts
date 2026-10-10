@@ -7,7 +7,7 @@
  *
  * Code reads the files and sends them to Jev; the agent only gets typed answers.
  * Zero dependencies: newline-delimited JSON-RPC over stdin/stdout, run with plain `node` (type stripping).
- * Files resolve against JEV_ROOT, then CLAUDE_PROJECT_DIR (Claude Code sets it for MCP servers), then the cwd.
+ * Files resolve against JEV_ROOT, then CLAUDE_PROJECT_DIR (Claude Code sets it for MCP servers), then the cwd. Absolute paths inside it work too.
  * Credentials: OPENROUTER_API_KEY / TYPESAFE_API_KEY from the environment. As the jev-kit plugin, the key comes from
  * its userConfig; in development, from ../.env. JEV_BACKEND=mock for offline runs.
  * Spend limits (./budget.ts): JEV_MAX_FILES, JEV_MAX_TOKENS_PER_CALL, JEV_MAX_USD_PER_SESSION, from userConfig in the plugin.
@@ -53,13 +53,15 @@ const QUESTION_SCHEMA =
   "Write every question against `content`, the file's text; `path` is also in the state. Ask every question you might need in one block, it is one call per file either way.";
 
 const str = (description: string) => ({ type: "string", description });
+// The agent's shell may have cd'd into a subfolder, so say where relative paths start.
+const PATH = `relative to the repo root (${ROOT}), or absolute inside it`;
 const TOOLS: Record<string, { description: string; inputSchema: object; run: (p: any, decide: Decide) => Promise<unknown>; format?: (payload: any, session: object) => string }> = {
   ask_jev_file_bool: {
     description: `Yes or no about one file. Returns { path, answer, noul } where noul is the probability of yes, 0 to 1. ${WHEN}`,
     inputSchema: {
       type: "object",
       properties: {
-        path: str("File path, relative to the repo"),
+        path: str(`File path, ${PATH}`),
         question: str("A yes or no question about `content`, for example: Does `content` validate authentication tokens?"),
         yes: str("What counts as yes"),
         no: str("What counts as no"),
@@ -73,7 +75,7 @@ const TOOLS: Record<string, { description: string; inputSchema: object; run: (p:
     inputSchema: {
       type: "object",
       properties: {
-        path: str("File path, relative to the repo"),
+        path: str(`File path, ${PATH}`),
         question: str("The question, for example: Which layer is `content`?"),
         options: { type: "object", additionalProperties: { type: "string" }, description: "Option name to a one line description of when it applies. Up to 255." },
       },
@@ -86,7 +88,7 @@ const TOOLS: Record<string, { description: string; inputSchema: object; run: (p:
     inputSchema: {
       type: "object",
       properties: {
-        path: str("File path, relative to the repo"),
+        path: str(`File path, ${PATH}`),
         question: str("The question, for example: How risky is a refactor of `content`?"),
         levels: { type: "array", items: { type: "string" }, description: "Ordered low to high, each level a situation, for example: Isolated and well tested" },
       },
@@ -105,7 +107,7 @@ const TOOLS: Record<string, { description: string; inputSchema: object; run: (p:
     inputSchema: {
       type: "object",
       properties: {
-        paths_or_globs: { type: "array", items: { type: "string" }, description: 'Files, directories, or globs, relative to the repo, for example ["src/**/*.ts"] or ["src/http"]' },
+        paths_or_globs: { type: "array", items: { type: "string" }, description: `Files, directories, or globs, ${PATH}, for example ["src/**/*.ts"] or ["src/http"]` },
         questions_json: str("The question block as a JSON string"),
         recursive: { type: "boolean", description: "For directories: include every file below them. Default false." },
       },

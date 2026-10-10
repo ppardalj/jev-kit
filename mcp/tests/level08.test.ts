@@ -11,13 +11,21 @@ test("L8: readFileState hands back the path and the text", async () => {
   assert.match(s.content, /export function validate/);
 });
 
+test("L8: an absolute path inside the repo reads as repo-relative; one outside is refused, never read", async () => {
+  assert.equal((await l8.readFileState(`${repo}/src/auth/session.ts`, repo)).path, "src/auth/session.ts");
+  const outside = await makeRepo({ "secret.txt": "token" });
+  await assert.rejects(l8.readFileState(`${outside}/secret.txt`, repo), /outside the repo/);
+  await assert.rejects(l8.readFileState("../x.txt", repo), /outside the repo/);
+  assert.equal(l8.repoPath("..notes.md", repo), "..notes.md", "a name starting with .. is still inside");
+});
+
 test("L8: missing, directory, binary, and oversized files are refused with the path", async () => {
   const dir = await makeRepo({
     "blob.bin": Buffer.from([0x89, 0x50, 0x00, 0x47, 0x0d, 0x0a]),
     "big.txt": "x".repeat(l8.MAX_FILE_CHARS + 1),
     "sub/a.txt": "a",
   });
-  await assert.rejects(l8.readFileState("nope.ts", dir), /not found: nope\.ts/);
+  await assert.rejects(l8.readFileState("nope.ts", dir), new RegExp(`not found: nope\\.ts, paths resolve from ${dir}`));
   await assert.rejects(l8.readFileState("sub", dir), /not a file: sub/);
   await assert.rejects(l8.readFileState("blob.bin", dir), /binary: blob\.bin/);
   await assert.rejects(l8.readFileState("big.txt", dir), /too large/);

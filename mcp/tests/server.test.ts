@@ -80,10 +80,17 @@ test("server: ask_jev_files also takes the question block as an object", async (
   assert.equal(JSON.parse(result.content[0].text).calls, 1);
 });
 
+test("server: an absolute path inside the repo works and comes back repo-relative", async () => {
+  const one = await call("ask_jev_file_bool", { path: `${repo}/src/auth/session.ts`, question: "Does `content` validate tokens?" });
+  assert.equal(JSON.parse(one.content[0].text).path, "src/auth/session.ts");
+  const many = await call("ask_jev_files", { paths_or_globs: [`${repo}/docs/api.md`, `${repo}/src/**/*.ts`], questions_json: { q: { type: "noul", instructions: "Is `content` docs?" } } });
+  assert.deepEqual(Object.keys(JSON.parse(many.content[0].text).results), ["docs/api.md", "src/auth/session.ts", "src/domain/billing.ts", "src/http/invoices.ts"]);
+});
+
 test("server: tool failures come back as isError with the reason, not as protocol errors", async () => {
   const missing = await call("ask_jev_file_bool", { path: "nope.ts", question: "x?" });
   assert.equal(missing.isError, true);
-  assert.equal(missing.content[0].text, "not found: nope.ts");
+  assert.equal(missing.content[0].text, `not found: nope.ts, paths resolve from ${repo}`);
   const bad = await call("ask_jev_files", { paths_or_globs: ["src"], questions_json: "{not json" });
   assert.equal(bad.isError, true);
   assert.match(bad.content[0].text, /not valid JSON/);
