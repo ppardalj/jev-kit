@@ -55,7 +55,7 @@ const QUESTION_SCHEMA =
 const str = (description: string) => ({ type: "string", description });
 // The agent's shell may have cd'd into a subfolder, so say where relative paths start.
 const PATH = `relative to the repo root (${ROOT}), or absolute inside it`;
-const TOOLS: Record<string, { description: string; inputSchema: object; run: (p: any, decide: Decide) => Promise<unknown>; format?: (payload: any, session: object) => string }> = {
+const TOOLS: Record<string, { description: string; inputSchema: object; alwaysLoad?: boolean; run: (p: any, decide: Decide) => Promise<unknown>; format?: (payload: any, session: object) => string }> = {
   ask_jev_file_bool: {
     description: `Yes or no about one file. Returns { path, answer, noul } where noul is the probability of yes, 0 to 1. ${WHEN}`,
     inputSchema: {
@@ -108,7 +108,7 @@ const TOOLS: Record<string, { description: string; inputSchema: object; run: (p:
     inputSchema: {
       type: "object",
       properties: {
-        paths_or_globs: { type: "array", items: { type: "string" }, description: `Files, directories, or globs, ${PATH}, for example ["src/**/*.ts"] or ["src/http"]` },
+        paths_or_globs: { type: "array", items: { type: "string" }, description: `Files, directories, or globs, ${PATH}, for example ["src/**/*.ts"] or ["src/http"]. Start a pattern with ! to leave out what it matches, for example ["src/**/*.tsx", "!**/*.stories.tsx", "!**/*.test.tsx"]` },
         questions_json: str("The question block as a JSON string"),
         recursive: { type: "boolean", description: "For directories: include every file below them. Default false." },
       },
@@ -129,6 +129,7 @@ const TOOLS: Record<string, { description: string; inputSchema: object; run: (p:
       }
     },
     format: ({ result, questions }, session) => compactFiles(result, questions, session),
+    alwaysLoad: true,
   },
   pick_first_file: {
     description:
@@ -180,7 +181,12 @@ async function handle(msg: any): Promise<unknown | undefined> {
     case "ping":
       return {};
     case "tools/list":
-      return { tools: Object.entries(TOOLS).map(([name, t]) => ({ name, description: t.description, inputSchema: t.inputSchema })) };
+      // alwaysLoad: Claude Code loads the tool up front instead of behind a tool search, which saves the skills a turn.
+      return {
+        tools: Object.entries(TOOLS).map(([name, t]) => ({
+          name, description: t.description, inputSchema: t.inputSchema, ...(t.alwaysLoad && { _meta: { "anthropic/alwaysLoad": true } }),
+        })),
+      };
     case "tools/call":
       return callTool(msg.params?.name, msg.params?.arguments);
     default:

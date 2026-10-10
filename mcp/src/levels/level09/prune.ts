@@ -51,16 +51,26 @@ const staticPrefix = (pattern: string) => {
 const matches = (path: string, pattern: string) =>
   matchesGlob(path, pattern) || matchesGlob(path.replace(/(^|\/)\./g, "$1_"), pattern);
 
+/** A pattern as written, minus a leading ./ and trailing slashes, made repo-relative when absolute inside the repo. */
+const normalize = (raw: string, cwd: string) => {
+  const trimmed = raw.trim().replace(/^\.\//, "").replace(/\/+$/, "");
+  return isAbsolute(trimmed) ? repoPath(trimmed, cwd) ?? trimmed : trimmed; // outside the repo: prune reports it
+};
+
 /**
  * Patterns are globs, files, or directories, relative to `cwd` or absolute inside it.
  * A directory means its files, or everything below it when recursive.
+ * A pattern starting with ! removes what it matches from the others: a glob, a file, or a directory and everything below it.
  */
 export async function expandPatterns(patterns: string[], cwd: string, recursive: boolean): Promise<string[]> {
   const out = new Set<string>();
+  const excludes = patterns.filter((p) => p.trim().startsWith("!")).map((p) => normalize(p.trim().slice(1), cwd)).filter(Boolean);
+  const excluded = (path: string) =>
+    excludes.some((x) => (GLOB_CHARS.test(x) ? matches(path, x) : path === x || path.startsWith(`${x}/`)));
   for (const raw of patterns) {
-    const trimmed = raw.trim().replace(/^\.\//, "").replace(/\/+$/, "");
-    if (!trimmed) continue;
-    const pattern = isAbsolute(trimmed) ? repoPath(trimmed, cwd) ?? trimmed : trimmed; // outside the repo: prune reports it
+    if (raw.trim().startsWith("!")) continue;
+    const pattern = normalize(raw, cwd);
+    if (!pattern) continue;
     if (GLOB_CHARS.test(pattern)) {
       for await (const p of walk(staticPrefix(pattern), cwd, true)) if (matches(p, pattern)) out.add(p);
       continue;
@@ -71,7 +81,7 @@ export async function expandPatterns(patterns: string[], cwd: string, recursive:
     if (info.isFile()) { out.add(pattern); continue; }
     for await (const p of walk(pattern, cwd, recursive)) out.add(p);
   }
-  return [...out].sort();
+  return [...out].filter((p) => !excluded(p)).sort();
 }
 
 export interface Pruned {

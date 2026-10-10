@@ -57,6 +57,12 @@ test("server: lists the five tools, each with a description and an object schema
   }
 });
 
+test("server: only ask_jev_files asks Claude Code to load it up front", async () => {
+  const { result } = await request("tools/list");
+  const always = result.tools.filter((t: any) => t._meta?.["anthropic/alwaysLoad"] === true).map((t: any) => t.name);
+  assert.deepEqual(always, ["ask_jev_files"]);
+});
+
 test("server: ask_jev_file_bool resolves paths against JEV_ROOT and reports the session ledger", async () => {
   const result = await call("ask_jev_file_bool", { path: "src/auth/session.ts", question: "Does `content` validate tokens?" });
   assert.equal(result.isError, undefined);

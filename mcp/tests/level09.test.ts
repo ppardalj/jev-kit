@@ -58,6 +58,13 @@ test("L9 B: absolute patterns inside the repo expand to repo-relative paths", as
   assert.match(skipped[0].reason, /outside the repo/);
 });
 
+test("L9 B: a pattern starting with ! leaves out what it matches: a glob, a file, or a directory", async () => {
+  assert.deepEqual(await expand(["src/**/*.ts", "!**/billing.ts"]), ["src/auth/session.ts", "src/http/invoices.ts"]);
+  assert.deepEqual(await expand(["src/**/*.ts", "!src/auth/session.ts", "!./src/http/"]), ["src/domain/billing.ts"]);
+  assert.deepEqual(await expand(["**/*.md", "!.claude"]), ["docs/api.md"]);
+  assert.deepEqual(await expand(["!**/*.md"]), [], "only excludes means nothing");
+});
+
 test("L9 B: symlinked folders are followed, and a link cycle ends the walk", async () => {
   const outside = await makeRepo({ "notes/a.md": "a" });
   const dir = await makeRepo({ "own.md": "own" });
