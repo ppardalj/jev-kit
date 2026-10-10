@@ -14,9 +14,9 @@ import { existsSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { jev } from "./src/core/client.ts";
-import type { Questions, State } from "./src/core/types.ts";
+import type { Answer, Questions, State } from "./src/core/types.ts";
 import { askFileBool, askFileChoice, askFileScore, FileStateError } from "./src/levels/level08/index.ts";
-import { askFiles, pickFirstFile } from "./src/levels/level09/index.ts";
+import { askFiles, parseQuestions, pickFirstFile, type AskFilesResult } from "./src/levels/level09/index.ts";
 
 const envFile = fileURLToPath(new URL("../.env", import.meta.url));
 if (existsSync(envFile)) process.loadEnvFile(envFile);
@@ -50,8 +50,30 @@ const QUESTION_SCHEMA =
   "Write every question against `content`, the file's text; `path` is also in the state. Ask every question you might need in one block, it is one call per file either way.";
 
 const str = (description: string) => ({ type: "string", description });
+const r2 = (x: number) => Math.round(x * 100) / 100;
 
-const TOOLS: Record<string, { description: string; inputSchema: object; run: (p: any, decide: Decide) => Promise<unknown> }> = {
+/** One value per answer: noul is p(yes), choice is "key confidence", score is the position on the levels. */
+const compactAnswer = (a: Answer) =>
+  a.type === "noul" ? r2(a.noul) : a.type === "choice" ? `${a.choice} ${r2(a.confidence)}` : r2(a.score);
+
+/**
+ * ask_jev_files output sized for the agent's context: one line per file, score legends once instead of per file,
+ * no per-file usage (jev_session carries the totals).
+ */
+function compactFiles(result: AskFilesResult, questions: Questions, session: object): string {
+  const legends = Object.fromEntries(
+    Object.entries(questions).flatMap(([id, q]) => (q.type === "score" ? [[id, q.criteria]] : [])),
+  );
+  const rows = result.results.map((r) => {
+    const answers = Object.fromEntries(Object.entries(r.answers).map(([id, a]) => [id, compactAnswer(a)]));
+    return `  ${JSON.stringify(r.path)}: ${JSON.stringify(answers)}`;
+  });
+  const rest = { legends, skipped: result.skipped, calls: result.calls, jev_session: session };
+  const tail = Object.entries(rest).map(([k, v]) => `${JSON.stringify(k)}: ${JSON.stringify(v)}`);
+  return `{\n"results": {\n${rows.join(",\n")}\n},\n${tail.join(",\n")}\n}`;
+}
+
+const TOOLS: Record<string, { description: string; inputSchema: object; run: (p: any, decide: Decide) => Promise<unknown>; format?: (payload: any, session: object) => string }> = {
   ask_jev_file_bool: {
     description: `Yes or no about one file. Returns { path, answer, noul } where noul is the probability of yes, 0 to 1. ${WHEN}`,
     inputSchema: {
@@ -96,7 +118,8 @@ const TOOLS: Record<string, { description: string; inputSchema: object; run: (p:
     description:
       "Ask the same typed questions of many files at once without reading any of them. Code expands globs and directories, " +
       "drops node_modules, .git, binaries, and files over the budget, caps the list at 255, then makes one Jev call per file in parallel. " +
-      "Returns { results: [{ path, answers }], skipped: [{ path, reason }], calls }. " + QUESTION_SCHEMA +
+      'Returns { results: { path: { question_id: value } }, legends, skipped: [{ path, reason }], calls }. Values: noul is p(yes), choice is "key confidence", ' +
+      "score is the position on its levels, listed once in legends. " + QUESTION_SCHEMA +
       " Use Read when you need a file's code; use Grep for exact strings.",
     inputSchema: {
       type: "object",
@@ -107,11 +130,12 @@ const TOOLS: Record<string, { description: string; inputSchema: object; run: (p:
       },
       required: ["paths_or_globs", "questions_json"],
     },
-    run: (p, decide) =>
-      askFiles(p.paths_or_globs, typeof p.questions_json === "string" ? p.questions_json : JSON.stringify(p.questions_json), ROOT, {
-        recursive: p.recursive ?? false,
-        decide,
-      }),
+    run: async (p, decide) => {
+      const questionsJson = typeof p.questions_json === "string" ? p.questions_json : JSON.stringify(p.questions_json);
+      const result = await askFiles(p.paths_or_globs, questionsJson, ROOT, { recursive: p.recursive ?? false, decide });
+      return { result, questions: parseQuestions(questionsJson) };
+    },
+    format: ({ result, questions }, session) => compactFiles(result, questions, session),
   },
   pick_first_file: {
     description:
@@ -141,7 +165,8 @@ async function callTool(name: string, args: any) {
   try {
     const payload = await tool.run(args ?? {}, decide);
     log(`${name}: ${calls} Jev calls, session total ${ledger.calls} calls $${ledger.cost_usd.toFixed(6)}`);
-    const text = JSON.stringify({ ...(payload as object), jev_session: { ...ledger, cost_usd: Number(ledger.cost_usd.toFixed(6)) } }, null, 2);
+    const session = { ...ledger, cost_usd: Number(ledger.cost_usd.toFixed(6)) };
+    const text = tool.format ? tool.format(payload, session) : JSON.stringify({ ...(payload as object), jev_session: session }, null, 2);
     return { content: [{ type: "text", text }] };
   } catch (err: any) {
     log(`${name} failed: ${err?.message ?? err}`);

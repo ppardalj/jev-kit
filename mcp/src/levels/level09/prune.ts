@@ -2,8 +2,8 @@
  * Level 9, option B: expand and prune.
  * Globs and directories become a file list in code. Dependencies, VCS folders, binaries, and files over the budget drop out with a reason. The 255 cap is enforced before any call is made.
  */
-import { glob, stat } from "node:fs/promises";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { readdir, realpath, stat } from "node:fs/promises";
+import { isAbsolute, join, matchesGlob, relative, resolve, sep } from "node:path";
 import { LIMITS } from "../../core/types.ts";
 import { MAX_FILE_CHARS } from "../level08/read-state.ts";
 
@@ -15,21 +15,57 @@ export interface Skipped {
   reason: string;
 }
 
+/**
+ * Files under `dir`, as paths joined onto `dir`. Never descends into SKIP_DIRS, so dependencies cost nothing.
+ * Dot folders like .claude or .github are walked: Node's glob skips them under `**` with no option to opt in.
+ * Symlinks are followed; `seen` holds real directory paths so a link cycle ends the walk.
+ */
+async function* walk(dir: string, cwd: string, recursive: boolean, seen = new Set<string>()): AsyncGenerator<string> {
+  const full = isAbsolute(dir) ? dir : resolve(cwd, dir);
+  let entries;
+  try {
+    const real = await realpath(full);
+    if (seen.has(real)) return;
+    seen.add(real);
+    entries = await readdir(full, { withFileTypes: true });
+  } catch { return; }
+  for (const e of entries) {
+    const p = dir === "." ? e.name : join(dir, e.name);
+    let isFile = e.isFile(), isDir = e.isDirectory();
+    if (e.isSymbolicLink()) {
+      try { const info = await stat(join(full, e.name)); isFile = info.isFile(); isDir = info.isDirectory(); } catch { continue; }
+    }
+    if (isFile) yield p;
+    else if (isDir && recursive && !SKIP_DIRS.has(e.name)) yield* walk(p, cwd, true, seen);
+  }
+}
+
+/** The leading segments without glob characters, where the walk starts. */
+const staticPrefix = (pattern: string) => {
+  const parts = pattern.split("/");
+  const i = parts.findIndex((part) => GLOB_CHARS.test(part));
+  return parts.slice(0, i).join("/") || (pattern.startsWith("/") ? "/" : ".");
+};
+
+/** matchesGlob, like glob, never lets `*` or `**` match a leading dot; retry with the dots neutralized so they can. */
+const matches = (path: string, pattern: string) =>
+  matchesGlob(path, pattern) || matchesGlob(path.replace(/(^|\/)\./g, "$1_"), pattern);
+
 /** Patterns are globs, files, or directories. A directory means its files, or everything below it when recursive. */
 export async function expandPatterns(patterns: string[], cwd: string, recursive: boolean): Promise<string[]> {
   const out = new Set<string>();
   for (const raw of patterns) {
-    const pattern = raw.trim();
+    const pattern = raw.trim().replace(/^\.\//, "").replace(/\/+$/, "");
     if (!pattern) continue;
     if (GLOB_CHARS.test(pattern)) {
-      for await (const p of glob(pattern, { cwd })) out.add(String(p));
+      for await (const p of walk(staticPrefix(pattern), cwd, true)) if (matches(p, pattern)) out.add(p);
       continue;
     }
     const full = isAbsolute(pattern) ? pattern : resolve(cwd, pattern);
     let info;
     try { info = await stat(full); } catch { out.add(pattern); continue; } // let prune report it
     if (info.isFile()) { out.add(pattern); continue; }
-    for await (const p of glob(recursive ? `${pattern.replace(/\/+$/, "")}/**/*` : `${pattern.replace(/\/+$/, "")}/*`, { cwd })) out.add(String(p));
+    for await (const p of walk(pattern, cwd, recursive)) out.add(p);
   }
   return [...out].sort();
 }
