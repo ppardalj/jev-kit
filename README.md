@@ -18,7 +18,15 @@ Requires Node 22.18 or newer (the server runs TypeScript with Node's built-in ty
 /plugin install jev-kit@jev-kit
 ```
 
-Claude Code asks for the OpenRouter key when the plugin is enabled and keeps it in secure storage. Change it later from `/plugin` → Installed → jev-kit → Configure options.
+Then set the OpenRouter key. Installing does not ask for it, and every tool call fails until it is set:
+
+```
+/plugin configure jev-kit@jev-kit
+```
+
+Or from a shell: pipe a JSON object such as `{"openrouter_api_key": "sk-or-..."}` into `claude plugin configure jev-kit@jev-kit --values-stdin`. Restart Claude Code to apply it. Change the key later the same way, or from `/plugin` → Installed → jev-kit → Configure options.
+
+The key is stored as a plugin secret: in the system credential store, which on Linux is `~/.claude/.credentials.json` (plain text, mode 600; checked on WSL). Uninstalling the plugin deletes it.
 
 ## Privacy
 
