@@ -1,0 +1,17 @@
+[
+  {
+    "id": "d1",
+    "kind": "testing expectations",
+    "question": "I'm about to add a new screen to the app. How much testing is expected for it, and with which tools?"
+  },
+  {
+    "id": "d2",
+    "kind": "running locally",
+    "question": "I need to show the app to someone this afternoon without real data and without bringing up the whole Docker stack. What's the lightest way to run it?"
+  },
+  {
+    "id": "d3",
+    "kind": "where code goes",
+    "question": "Several features will need to show the same new kind of card. Where should it live, and what do we call that kind of piece here?"
+  }
+]

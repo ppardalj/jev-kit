@@ -1,0 +1,32 @@
+[
+  {
+    "id": "q1",
+    "kind": "control: grep is enough",
+    "question": "Which API controllers expose anonymous endpoints, and which of those have rate limiting?"
+  },
+  {
+    "id": "q2",
+    "kind": "semantic classification, backend",
+    "question": "Which managers under `Application/` in `api/ElBaul.Core` operate on baúl-scoped resources without going through `BaulAccessService` or `IBaulAuthorizer`? Is any of them a real authorization hole, or are they all legitimate exceptions?"
+  },
+  {
+    "id": "q3",
+    "kind": "conformance, frontend",
+    "question": "Which `*Route.tsx` files under `app/src/features` break the frontend layering rule, by calling `api.*` or a store's `setState` directly instead of going through a use case?"
+  },
+  {
+    "id": "q4",
+    "kind": "localization with noise",
+    "question": "What triggers the welcome email, where is it scheduled, and where is it rendered?"
+  },
+  {
+    "id": "q5",
+    "kind": "cross-service flow",
+    "question": "Trace end to end what happens when a custodian requests to delete a baúl: app, API, Core, and admin."
+  },
+  {
+    "id": "q6",
+    "kind": "semantic classification, many files",
+    "question": "Which presentational components under `app/src/features/*/components` hold logic that should live in a use case, container, or Route instead, such as data fetching, business rules, or side effects beyond local UI state?"
+  }
+]
