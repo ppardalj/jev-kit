@@ -98,7 +98,8 @@ const TOOLS: Record<string, { description: string; inputSchema: object; run: (p:
   },
   ask_jev_files: {
     description:
-      "Ask the same typed questions of many files at once without reading any of them. Code expands globs and directories, " +
+      "Audit or triage many files by a judgment grep can't make, such as whether each one follows a rule, handles a concern, or belongs to a layer, without reading any of them. " +
+      "Typical use: Grep or Glob for the candidates, pass that list here with every question you need, then Read only the files whose answers call for it. Code expands globs and directories, " +
       "drops node_modules, .git, binaries, and oversized files, then makes one Jev call per file in parallel. " +
       `Refused before any call when it matches over ${budget.limits.maxFiles} files or about ${budget.limits.maxTokensPerCall.toLocaleString("en")} tokens, so scope the pattern to where the answer can be. ` +
       'Returns { results: { path: { question_id: value } }, legends, skipped: [{ path, reason }], calls }. Values: noul is p(yes), choice is "key confidence", ' +
