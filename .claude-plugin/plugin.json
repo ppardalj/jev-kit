@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "jev-kit",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Jev-powered tools for Claude Code: cheap typed judgments about files without reading them into context.",
   "author": {
     "name": "Pedro Pardal",
@@ -17,15 +17,43 @@
       "description": "Key Jev is called with, through OpenRouter. Create one at https://openrouter.ai/keys",
       "sensitive": true,
       "required": true
+    },
+    "max_files_per_call": {
+      "type": "number",
+      "title": "Max files per call",
+      "description": "ask_jev_files refuses, before any Jev call, a pattern that matches more files than this.",
+      "default": 50,
+      "min": 1,
+      "max": 255
+    },
+    "max_tokens_per_call": {
+      "type": "number",
+      "title": "Max tokens per call",
+      "description": "ask_jev_files refuses, before any Jev call, a pattern whose files add up to more estimated tokens than this.",
+      "default": 500000,
+      "min": 1000
+    },
+    "max_usd_per_session": {
+      "type": "number",
+      "title": "Max USD per session",
+      "description": "Every tool refuses once Jev has cost this much in the current Claude Code session.",
+      "default": 0.5,
+      "min": 0.01
     }
   },
   "mcpServers": {
     "jev-files": {
       "command": "node",
-      "args": ["--disable-warning=ExperimentalWarning", "${CLAUDE_PLUGIN_ROOT}/mcp/jev-files.ts"],
+      "args": [
+        "--disable-warning=ExperimentalWarning",
+        "${CLAUDE_PLUGIN_ROOT}/mcp/jev-files.ts"
+      ],
       "env": {
         "OPENROUTER_API_KEY": "${user_config.openrouter_api_key}",
-        "JEV_ROOT": "${CLAUDE_PROJECT_DIR}"
+        "JEV_ROOT": "${CLAUDE_PROJECT_DIR}",
+        "JEV_MAX_FILES": "${user_config.max_files_per_call}",
+        "JEV_MAX_TOKENS_PER_CALL": "${user_config.max_tokens_per_call}",
+        "JEV_MAX_USD_PER_SESSION": "${user_config.max_usd_per_session}"
       }
     }
   }

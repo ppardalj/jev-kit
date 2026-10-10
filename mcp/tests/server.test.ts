@@ -9,28 +9,36 @@ const SERVER = fileURLToPath(new URL("../jev-files.ts", import.meta.url));
 const repo = await makeRepo(SAMPLE);
 
 /** The server as Claude Code runs it: a child process speaking newline-delimited JSON-RPC, here on the mock. */
-const child = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", SERVER], {
-  env: { ...process.env, JEV_BACKEND: "mock", JEV_ROOT: repo },
-  stdio: ["pipe", "pipe", "pipe"],
-});
-const lines: any[] = [];
-const waiting = new Map<number, (msg: any) => void>();
-createInterface({ input: child.stdout }).on("line", (line) => {
-  const msg = JSON.parse(line);
-  lines.push(msg);
-  waiting.get(msg.id)?.(msg);
-});
-after(() => child.kill());
-
-let nextId = 1;
-function request(method: string, params?: unknown): Promise<any> {
-  const id = nextId++;
-  return new Promise((resolve) => {
-    waiting.set(id, resolve);
-    child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
+function startServer(env: Record<string, string> = {}) {
+  const child = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", SERVER], {
+    env: { ...process.env, JEV_BACKEND: "mock", JEV_ROOT: repo, ...env },
+    stdio: ["pipe", "pipe", "pipe"],
   });
+  const lines: any[] = [];
+  const waiting = new Map<number, { resolve: (msg: any) => void; reject: (err: Error) => void }>();
+  let stderr = "";
+  child.stderr.on("data", (d) => (stderr += d));
+  createInterface({ input: child.stdout }).on("line", (line) => {
+    const msg = JSON.parse(line);
+    lines.push(msg);
+    waiting.get(msg.id)?.resolve(msg);
+  });
+  // A server that dies must fail the waiting test with its stderr, not leave it pending.
+  child.on("exit", (code) => { for (const w of waiting.values()) w.reject(new Error(`server exited ${code}: ${stderr}`)); });
+  after(() => child.kill());
+  let nextId = 1;
+  const request = (method: string, params?: unknown): Promise<any> => {
+    const id = nextId++;
+    return new Promise((resolve, reject) => {
+      waiting.set(id, { resolve, reject });
+      child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
+    });
+  };
+  const call = async (name: string, args: unknown) => (await request("tools/call", { name, arguments: args })).result;
+  return { child, lines, request, call };
 }
-const call = async (name: string, args: unknown) => (await request("tools/call", { name, arguments: args })).result;
+
+const { child, lines, request, call } = startServer();
 
 test("server: initialize echoes the protocol version and declares tools", async () => {
   const { result } = await request("initialize", { protocolVersion: "2025-06-18" });
@@ -88,4 +96,29 @@ test("server: unknown methods are JSON-RPC errors, notifications get no reply", 
   const reply = await request("resources/list");
   assert.equal(reply.error.code, -32601);
   assert.ok(lines.every((m) => m.id !== undefined), "a notification got a reply");
+});
+
+test("server: a pattern over the file limit is refused before any Jev call", async () => {
+  const strict = startServer({ JEV_MAX_FILES: "1" });
+  const questions = { q: { type: "noul", instructions: "Is `content` docs?" } };
+  const refused = await strict.call("ask_jev_files", { paths_or_globs: ["**/*.md"], questions_json: questions });
+  assert.equal(refused.isError, true);
+  assert.match(refused.content[0].text, /^refused, nothing sent: 2 files, .*over the 1 file limit per call/);
+  const ok = await strict.call("ask_jev_files", { paths_or_globs: ["docs/api.md"], questions_json: questions });
+  assert.equal(JSON.parse(ok.content[0].text).jev_session.calls, 1, "only the admitted call reached Jev");
+  const { result } = await strict.request("tools/list");
+  assert.match(result.tools.find((t: any) => t.name === "ask_jev_files").description, /over 1 files/);
+});
+
+test("server: a call whose estimate would break the session budget is refused", async () => {
+  const broke = startServer({ JEV_MAX_USD_PER_SESSION: "0.000000001" });
+  const refused = await broke.call("ask_jev_files", { paths_or_globs: ["docs"], questions_json: { q: { type: "noul", instructions: "Is `content` docs?" } } });
+  assert.equal(refused.isError, true);
+  assert.match(refused.content[0].text, /session budget is \$0\.0000/);
+});
+
+test("server: limits that were never set, or never substituted, fall back to the defaults", async () => {
+  const unset = startServer({ JEV_MAX_FILES: "", JEV_MAX_TOKENS_PER_CALL: "${user_config.max_tokens_per_call}" });
+  const { result } = await unset.request("tools/list");
+  assert.match(result.tools.find((t: any) => t.name === "ask_jev_files").description, /over 50 files or about 500,000 tokens/);
 });

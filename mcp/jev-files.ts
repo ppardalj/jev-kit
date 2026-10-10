@@ -10,6 +10,7 @@
  * Files resolve against JEV_ROOT, then CLAUDE_PROJECT_DIR (Claude Code sets it for MCP servers), then the cwd.
  * Credentials: OPENROUTER_API_KEY / TYPESAFE_API_KEY from the environment. As the jev-kit plugin, the key comes from
  * its userConfig; in development, from ../.env. JEV_BACKEND=mock for offline runs.
+ * Spend limits (./budget.ts): JEV_MAX_FILES, JEV_MAX_TOKENS_PER_CALL, JEV_MAX_USD_PER_SESSION, from userConfig in the plugin.
  */
 import { existsSync } from "node:fs";
 import { createInterface } from "node:readline";
@@ -18,6 +19,7 @@ import { jev } from "./src/core/client.ts";
 import type { Questions, State } from "./src/core/types.ts";
 import { askFileBool, askFileChoice, askFileScore, FileStateError } from "./src/levels/level08/index.ts";
 import { askFiles, parseQuestions, pickFirstFile } from "./src/levels/level09/index.ts";
+import { Budget, BudgetError, estimateTokens, readLimits } from "./budget.ts";
 import { compactFiles } from "./format.ts";
 
 // Development only: the installed plugin has no .env and passes the key through userConfig.
@@ -27,16 +29,14 @@ if (existsSync(envFile)) process.loadEnvFile(envFile);
 const ROOT = process.env.JEV_ROOT || process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const log = (...args: unknown[]) => process.stderr.write(`[jev-files] ${args.map(String).join(" ")}\n`);
 
-/** Running ledger for the session, so every tool result carries what Jev has cost so far. */
-const ledger = { calls: 0, input_tokens: 0, cost_usd: 0 };
+/** Running ledger and spend limits for the session; every tool result carries what Jev has cost so far. */
+const budget = new Budget(readLimits(process.env));
 
 type Decide = (state: State, questions: Questions) => Promise<{ answers: any; usage: unknown }>;
 
 async function decideAndCount(state: State, questions: Questions) {
   const result = await jev.systemOne(state, questions);
-  ledger.calls++;
-  ledger.input_tokens += result.usage.input_tokens;
-  if (result.meta.cost.amount !== null) ledger.cost_usd += result.meta.cost.amount;
+  budget.record(result.usage.input_tokens, result.meta.cost.amount);
   return { answers: result.answers, usage: result.usage };
 }
 
@@ -97,7 +97,8 @@ const TOOLS: Record<string, { description: string; inputSchema: object; run: (p:
   ask_jev_files: {
     description:
       "Ask the same typed questions of many files at once without reading any of them. Code expands globs and directories, " +
-      "drops node_modules, .git, binaries, and files over the budget, caps the list at 255, then makes one Jev call per file in parallel. " +
+      "drops node_modules, .git, binaries, and oversized files, then makes one Jev call per file in parallel. " +
+      `Refused before any call when it matches over ${budget.limits.maxFiles} files or about ${budget.limits.maxTokensPerCall.toLocaleString("en")} tokens, so scope the pattern to where the answer can be. ` +
       'Returns { results: { path: { question_id: value } }, legends, skipped: [{ path, reason }], calls }. Values: noul is p(yes), choice is "key confidence", ' +
       "score is the position on its levels, listed once in legends. " + QUESTION_SCHEMA +
       " Use Read when you need a file's code; use Grep for exact strings.",
@@ -112,8 +113,17 @@ const TOOLS: Record<string, { description: string; inputSchema: object; run: (p:
     },
     run: async (p, decide) => {
       const questionsJson = typeof p.questions_json === "string" ? p.questions_json : JSON.stringify(p.questions_json);
-      const result = await askFiles(p.paths_or_globs, questionsJson, ROOT, { recursive: p.recursive ?? false, decide });
-      return { result, questions: parseQuestions(questionsJson) };
+      let release = () => {};
+      const beforeCalls = (plan: { files: string[]; bytes: number; capped: number }) => {
+        const files = plan.files.length + plan.capped;
+        release = budget.admit({ files, tokens: estimateTokens(plan.bytes, files, questionsJson.length) });
+      };
+      try {
+        const result = await askFiles(p.paths_or_globs, questionsJson, ROOT, { recursive: p.recursive ?? false, decide, beforeCalls });
+        return { result, questions: parseQuestions(questionsJson) };
+      } finally {
+        release();
+      }
     },
     format: ({ result, questions }, session) => compactFiles(result, questions, session),
   },
@@ -143,14 +153,16 @@ async function callTool(name: string, args: any) {
   let calls = 0;
   const decide: Decide = (state, questions) => (calls++, decideAndCount(state, questions));
   try {
+    budget.admit({ files: 0, tokens: 0 })(); // a spent session refuses every tool, not only ask_jev_files
     const payload = await tool.run(args ?? {}, decide);
-    log(`${name}: ${calls} Jev calls, session total ${ledger.calls} calls $${ledger.cost_usd.toFixed(6)}`);
-    const session = { ...ledger, cost_usd: Number(ledger.cost_usd.toFixed(6)) };
+    const session = budget.session();
+    log(`${name}: ${calls} Jev calls, session total ${session.calls} calls $${session.cost_usd}`);
     const text = tool.format ? tool.format(payload, session) : JSON.stringify({ ...(payload as object), jev_session: session }, null, 2);
     return { content: [{ type: "text", text }] };
   } catch (err: any) {
     log(`${name} failed: ${err?.message ?? err}`);
-    return { content: [{ type: "text", text: err instanceof FileStateError ? err.message : `error: ${err?.message ?? err}` }], isError: true };
+    const verbatim = err instanceof FileStateError || err instanceof BudgetError;
+    return { content: [{ type: "text", text: verbatim ? err.message : `error: ${err?.message ?? err}` }], isError: true };
   }
 }
 
@@ -192,4 +204,4 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
   }
 });
 
-log(`ready, root ${ROOT}`);
+log(`ready, root ${ROOT}, limits ${JSON.stringify(budget.limits)}`);

@@ -70,10 +70,20 @@ export async function expandPatterns(patterns: string[], cwd: string, recursive:
   return [...out].sort();
 }
 
+export interface Pruned {
+  files: string[];
+  skipped: Skipped[];
+  /** Total size of `files`, for a cost estimate before any call. */
+  bytes: number;
+  /** Files that passed every filter but fell over the cap. */
+  capped: number;
+}
+
 /** What survives, and why each dropped file dropped. Nothing here calls Jev. */
-export async function pruneFiles(paths: string[], cwd: string, cap = LIMITS.MAX_CHOICE_OPTIONS): Promise<{ files: string[]; skipped: Skipped[] }> {
+export async function pruneFiles(paths: string[], cwd: string, cap = LIMITS.MAX_CHOICE_OPTIONS): Promise<Pruned> {
   const files: string[] = [];
   const skipped: Skipped[] = [];
+  let bytes = 0, capped = 0;
   for (const path of paths) {
     const full = isAbsolute(path) ? path : resolve(cwd, path);
     const rel = relative(cwd, full);
@@ -85,8 +95,9 @@ export async function pruneFiles(paths: string[], cwd: string, cap = LIMITS.MAX_
     if (info.size === 0) { skipped.push({ path, reason: "empty" }); continue; }
     if (info.size > MAX_FILE_CHARS) { skipped.push({ path, reason: `too large, ${info.size} bytes` }); continue; }
     if (/\.(png|jpe?g|gif|webp|ico|pdf|zip|gz|tgz|woff2?|ttf|mp[34]|mov|lock)$/i.test(path)) { skipped.push({ path, reason: "binary or lock file" }); continue; }
-    if (files.length >= cap) { skipped.push({ path, reason: `over the ${cap} file cap; narrow the pattern` }); continue; }
+    if (files.length >= cap) { skipped.push({ path, reason: `over the ${cap} file cap; narrow the pattern` }); capped++; continue; }
     files.push(path);
+    bytes += info.size;
   }
-  return { files, skipped };
+  return { files, skipped, bytes, capped };
 }

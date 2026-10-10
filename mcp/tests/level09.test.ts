@@ -73,6 +73,22 @@ test("L9 B: prune drops junk with a reason, and the cap holds before any call", 
   assert.match(reasons["src/http/invoices.ts"], /over the 2 file cap/);
 });
 
+test("L9 B: prune reports the kept bytes and how many fell over the cap, for an estimate before any call", async () => {
+  const { files, bytes, capped } = await l9.pruneFiles(await expand(["src/**/*.ts"]), repo, 2);
+  assert.equal(files.length, 2);
+  assert.equal(bytes, SAMPLE["src/auth/session.ts"].length + SAMPLE["src/domain/billing.ts"].length);
+  assert.equal(capped, 1);
+});
+
+test("L9 A: beforeCalls sees the plan and can refuse the whole call before anything is sent", async () => {
+  const { calls, decide } = fakeDecide({ touches_auth: { type: "noul", noul: 0.5 } });
+  let seen: any;
+  const refuse = (plan: any) => { seen = plan; throw new Error("over budget"); };
+  await assert.rejects(l9.askFiles(["src/**/*.ts"], Q, repo, { decide, beforeCalls: refuse }), /over budget/);
+  assert.equal(calls.length, 0);
+  assert.deepEqual(seen.files, ["src/auth/session.ts", "src/domain/billing.ts", "src/http/invoices.ts"]);
+});
+
 test("L9 A: one call per file with every question, results sorted by path", async () => {
   const { calls, decide } = fakeDecide({ touches_auth: { type: "noul", noul: 0.5 } });
   const r = await l9.askFiles(["src/http/invoices.ts", "src/auth/session.ts", "src/domain/billing.ts"], Q, repo, { decide });

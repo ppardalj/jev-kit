@@ -28,6 +28,18 @@ Or from a shell: pipe a JSON object such as `{"openrouter_api_key": "sk-or-..."}
 
 The key is stored as a plugin secret: in the system credential store, which on Linux is `~/.claude/.credentials.json` (plain text, mode 600; checked on WSL). Uninstalling the plugin deletes it.
 
+## Spend limits
+
+Every tool call is checked against three limits before anything goes to Jev. A refused call costs nothing, and its error tells Claude how big the call was.
+
+| Option | Default | Refuses |
+|---|---|---|
+| `max_files_per_call` | 50 | an `ask_jev_files` pattern that matches more files |
+| `max_tokens_per_call` | 500,000 | an `ask_jev_files` call whose files add up to more estimated tokens (text bytes / 4, plus about 500 per call) |
+| `max_usd_per_session` | $0.50 | every tool, once the session has spent this much; calls in flight count toward it |
+
+A session is one Claude Code session; restarting starts a new budget. The cost is OpenRouter's reported cost, estimated from the session's rate when it is missing. Change the limits with `/plugin configure jev-kit@jev-kit`; Claude Code stores them per user, not per project. They protect against a broad pattern or a looping agent within one session. For a hard monthly cap across sessions and machines, set a credit limit on the OpenRouter key.
+
 ## Privacy
 
 The tools send the text of the files you point them at to OpenRouter and TypeSafe. Don't use them on files you can't share with a third party.

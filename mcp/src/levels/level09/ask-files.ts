@@ -5,7 +5,7 @@
 import { jev } from "../../core/client.ts";
 import { validateQuestions, type Answer, type Questions, type State } from "../../core/types.ts";
 import { FileStateError, readFileState } from "../level08/read-state.ts";
-import { expandPatterns, pruneFiles, type Skipped } from "./prune.ts";
+import { expandPatterns, pruneFiles, type Pruned, type Skipped } from "./prune.ts";
 
 export type Decide = (state: State, questions: Questions) => Promise<{ answers: Record<string, Answer>; usage?: unknown }>;
 
@@ -52,12 +52,14 @@ export async function askFiles(
   patterns: string[],
   questionsJson: string,
   cwd: string,
-  opts: { recursive?: boolean; concurrency?: number; decide?: Decide; onResult?: (r: FileAnswers) => void } = {},
+  opts: { recursive?: boolean; concurrency?: number; decide?: Decide; onResult?: (r: FileAnswers) => void; beforeCalls?: (plan: Pruned) => void } = {},
 ): Promise<AskFilesResult> {
   const questions = parseQuestions(questionsJson);
   const decide = opts.decide ?? ((s, q) => jev.systemOne(s, q));
   const expanded = await expandPatterns(patterns, cwd, opts.recursive ?? false);
-  const { files, skipped } = await pruneFiles(expanded, cwd);
+  const plan = await pruneFiles(expanded, cwd);
+  opts.beforeCalls?.(plan); // throws to refuse the whole call before anything is sent
+  const { files, skipped } = plan;
   const results: FileAnswers[] = [];
   await parallel(files, opts.concurrency ?? 16, async (path) => {
     try {
