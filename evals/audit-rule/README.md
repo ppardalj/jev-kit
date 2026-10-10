@@ -1,5 +1,7 @@
 # Eval: the audit-rule skill on el-baul
 
+The skill is eval-only, not shipped in the plugin: [`../skills/audit-rule`](../skills/audit-rule/SKILL.md).
+
 Is auditing many files against a documented rule cheaper with Jev than with Grep and Read, and does
 the `audit-rule` skill get picked for it? Target: `ne2-studio/el-baul`. The questions are new, not
 the el-baul eval's q2, q3 or q6, and the skill's description names neither rule.

@@ -1,5 +1,7 @@
 # Eval: the relevant-docs skill on el-baul
 
+The skill is eval-only, not shipped in the plugin: [`../skills/relevant-docs`](../skills/relevant-docs/SKILL.md).
+
 Does the `relevant-docs` skill get picked, unprompted, for questions whose answer lives in a repo's
 docs, and does it then find them through Jev? Target: `ne2-studio/el-baul`, 48 markdown files,
 about 5,000 lines, with architecture notes, two ADRs, operations guides and per-service READMEs.

@@ -5,8 +5,9 @@
 # Env: RUN_TAG names the run dir; QUESTIONS="q2 q3" runs only those ids; JEV_HINT is appended to the jev arm's prompt only.
 # Cheap adoption probe: ARMS=jev MAX_TURNS=6 REPEAT=3 runs only the jev arm, three times, cut after six turns;
 # summarize.ts reports the turn Jev was first reached for.
-# JEV_SKILLS="relevant-docs" evaluates this working copy instead of the installed release, with only those skills:
-# the installed plugin's cache gets this checkout's server and the listed skills for the run, and is restored on exit.
+# JEV_SKILLS="relevant-docs" evaluates this working copy instead of the installed release, with only those skills,
+# taken from skills/ (shipped) or evals/skills/ (eval-only): the installed plugin's cache gets this checkout's
+# server and the listed skills for the run, and is restored on exit.
 set -euo pipefail
 
 eval_dir=$(realpath "$1")
@@ -23,7 +24,10 @@ if [ -n "${JEV_SKILLS:-}" ]; then
   trap 'rm -rf "$cache" && cp -a "$backup/plugin" "$cache" && rm -rf "$backup"' EXIT
   rm -rf "$cache/mcp" "$cache/skills" && mkdir "$cache/skills"
   rsync -a --exclude tests "$checkout/mcp" "$cache/"
-  for skill in $JEV_SKILLS; do cp -a "$checkout/skills/$skill" "$cache/skills/"; done
+  for skill in $JEV_SKILLS; do
+    src="$checkout/skills/$skill"; [ -d "$src" ] || src="$checkout/evals/skills/$skill"
+    cp -a "$src" "$cache/skills/"
+  done
   echo "jev arm: $checkout with skills: $JEV_SKILLS" > "$out/build.txt"
 fi
 

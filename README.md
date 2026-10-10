@@ -6,7 +6,7 @@ Claude Code plugin with tools and skills built on [Jev](https://typesafe.ai), Ty
 
 | Component | What it does |
 |---|---|
-| `jev-files` MCP server | `ask_jev_file_bool`, `ask_jev_file_choice`, `ask_jev_file_score`: one judgment about one file. `ask_jev_files`: the same questions over many files in parallel. `pick_first_file`: which of them to open first. File contents go to Jev, never into Claude's context. |
+| `jev-files` MCP server | `ask_jev_file_bool`, `ask_jev_file_choice`, `ask_jev_file_score`: one judgment about one file. `ask_jev_files`: the same questions over many files in parallel, over paths or globs relative to the repo root or absolute, with `!` patterns to leave files out; Claude Code loads it up front. `pick_first_file`: which of them to open first. File contents go to Jev, never into Claude's context. |
 | `jev-files` skill | Tells Claude when to ask Jev about a file instead of reading it. |
 
 ## Install
