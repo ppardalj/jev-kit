@@ -7,8 +7,9 @@
  *
  * Code reads the files and sends them to Jev; the agent only gets typed answers.
  * Zero dependencies: newline-delimited JSON-RPC over stdin/stdout, run with plain `node` (type stripping).
- * Files resolve against JEV_ROOT, or the directory Claude Code launched the server from.
- * Credentials: OPENROUTER_API_KEY / TYPESAFE_API_KEY from the environment or ../.env; JEV_BACKEND=mock for offline runs.
+ * Files resolve against JEV_ROOT, then CLAUDE_PROJECT_DIR (Claude Code sets it for MCP servers), then the cwd.
+ * Credentials: OPENROUTER_API_KEY / TYPESAFE_API_KEY from the environment. As the jev-kit plugin, the key comes from
+ * its userConfig; in development, from ../.env. JEV_BACKEND=mock for offline runs.
  */
 import { existsSync } from "node:fs";
 import { createInterface } from "node:readline";
@@ -18,10 +19,11 @@ import type { Answer, Questions, State } from "./src/core/types.ts";
 import { askFileBool, askFileChoice, askFileScore, FileStateError } from "./src/levels/level08/index.ts";
 import { askFiles, parseQuestions, pickFirstFile, type AskFilesResult } from "./src/levels/level09/index.ts";
 
+// Development only: the installed plugin has no .env and passes the key through userConfig.
 const envFile = fileURLToPath(new URL("../.env", import.meta.url));
 if (existsSync(envFile)) process.loadEnvFile(envFile);
 
-const ROOT = process.env.JEV_ROOT || process.cwd();
+const ROOT = process.env.JEV_ROOT || process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const log = (...args: unknown[]) => process.stderr.write(`[jev-files] ${args.map(String).join(" ")}\n`);
 
 /** Running ledger for the session, so every tool result carries what Jev has cost so far. */

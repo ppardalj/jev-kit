@@ -1,0 +1,14 @@
+{
+  "name": "jev-kit",
+  "description": "Pedro Pardal's Jev-powered tools and skills for Claude Code.",
+  "owner": {
+    "name": "Pedro Pardal"
+  },
+  "plugins": [
+    {
+      "name": "jev-kit",
+      "source": "./",
+      "description": "Jev-powered tools for Claude Code"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "jev-kit",
+  "version": "0.1.0",
+  "description": "Jev-powered tools for Claude Code: cheap typed judgments about files without reading them into context.",
+  "author": {
+    "name": "Pedro Pardal",
+    "email": "ppardalj@gmail.com"
+  },
+  "skills": [
+    "./skills"
+  ],
+  "userConfig": {
+    "openrouter_api_key": {
+      "type": "string",
+      "title": "OpenRouter API key",
+      "description": "Key Jev is called with, through OpenRouter. Create one at https://openrouter.ai/keys",
+      "sensitive": true,
+      "required": true
+    }
+  },
+  "mcpServers": {
+    "jev-files": {
+      "command": "node",
+      "args": ["--disable-warning=ExperimentalWarning", "${CLAUDE_PLUGIN_ROOT}/mcp/jev-files.ts"],
+      "env": {
+        "OPENROUTER_API_KEY": "${user_config.openrouter_api_key}",
+        "JEV_ROOT": "${CLAUDE_PROJECT_DIR}"
+      }
+    }
+  }
+}
