@@ -1,5 +1,7 @@
 /**
- * Summarizes the stream-json logs of one eval run: Claude's tokens, cost, turns and tool calls,
+ * Summarizes the stream-json logs of one eval run. Wall time comes first, as the measure that matters on a
+ * subscription; tokens and cost stay as the measure that matters on the API.
+ * Per session: wall and API time, the time spent waiting on Jev, Claude's tokens, cost, turns and tool calls,
  * and Jev's calls, tokens and cost from the last `jev_session` a jev tool returned,
  * plus the turn Claude first reached for Jev: the jev-files skill, a ToolSearch for jev tools, or a jev tool.
  * Usage: node evals/summarize.ts <run-dir>   → markdown table on stdout, summary.json in the run dir.
@@ -18,15 +20,18 @@ async function summarize(file: string) {
   const jevIds = new Set<string>();
   let jev = { calls: 0, input_tokens: 0, cost_usd: 0 }, jevRefusals = 0, jevErrors = 0;
   let turn = 0, lastId: string | undefined, jevTurn: number | null = null;
+  const jevStart = new Map<string, number>();
+  let jevWaitMs = 0;
   for (const msg of lines) {
     if (msg.type === "assistant" && msg.message.id !== lastId) { turn++; lastId = msg.message.id; } // one turn streams as several messages
     for (const part of msg.message?.content ?? []) {
       if (msg.type === "assistant" && part.type === "tool_use") {
         if (jevTurn === null && /jev/.test(part.name === "Skill" || part.name === "ToolSearch" ? JSON.stringify(part.input) : part.name)) jevTurn = turn;
         tools[short(part.name)] = (tools[short(part.name)] ?? 0) + 1;
-        if (part.name.includes("jev-files")) jevIds.add(part.id);
+        if (part.name.includes("jev-files")) { jevIds.add(part.id); jevStart.set(part.id, Date.parse(msg.timestamp)); }
       }
       if (msg.type === "user" && part.type === "tool_result" && jevIds.has(part.tool_use_id)) {
+        jevWaitMs += Date.parse(msg.timestamp) - (jevStart.get(part.tool_use_id) ?? Date.parse(msg.timestamp));
         const text = typeof part.content === "string" ? part.content : part.content?.map((c: any) => c.text ?? "").join("");
         if (part.is_error) (/^refused/.test(text) ? jevRefusals++ : jevErrors++);
         try {
@@ -43,6 +48,7 @@ async function summarize(file: string) {
     ok: result.subtype === "success",
     turns: result.num_turns,
     duration_s: Math.round((result.duration_ms ?? 0) / 1000),
+    api_s: Math.round((result.duration_api_ms ?? 0) / 1000),
     claude: {
       input: u.input_tokens ?? 0,
       cache_read: u.cache_read_input_tokens ?? 0,
@@ -52,7 +58,7 @@ async function summarize(file: string) {
     },
     tools,
     tool_calls: Object.values(tools).reduce((a, b) => a + b, 0),
-    jev: { ...jev, refusals: jevRefusals, errors: jevErrors, first_turn: jevTurn },
+    jev: { ...jev, refusals: jevRefusals, errors: jevErrors, first_turn: jevTurn, wait_s: Number((jevWaitMs / 1000).toFixed(1)) },
     answer: result.result ?? "",
   };
 }
@@ -62,11 +68,11 @@ const rows = await Promise.all(files.map(summarize));
 await writeFile(join(dir, "summary.json"), JSON.stringify(rows, null, 2));
 
 const k = (n: number) => `${(n / 1000).toFixed(1)}k`;
-console.log("| run | ok | turns | s | claude in+cache | out | claude $ | tool calls | tools | jev at turn | jev calls | jev tokens | jev $ |");
-console.log("|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+console.log("| run | ok | s | api s | jev s | turns | claude in+cache | out | claude $ | jev calls | jev tokens | jev $ | tool calls | tools | jev at turn |");
+console.log("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
 for (const r of rows) {
   const c = r.claude;
   const tools = Object.entries(r.tools).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n}`).join(", ");
   const jev = r.jev.refusals || r.jev.errors ? ` (${r.jev.refusals} refused, ${r.jev.errors} err)` : "";
-  console.log(`| ${r.file.replace(".jsonl", "")} | ${r.ok ? "✔" : "✘"} | ${r.turns} | ${r.duration_s} | ${k(c.input + c.cache_read + c.cache_write)} | ${k(c.output)} | ${c.cost_usd.toFixed(2)} | ${r.tool_calls} | ${tools} | ${r.jev.first_turn ?? "—"} | ${r.jev.calls}${jev} | ${k(r.jev.input_tokens)} | ${r.jev.cost_usd.toFixed(4)} |`);
+  console.log(`| ${r.file.replace(".jsonl", "")} | ${r.ok ? "✔" : "✘"} | ${r.duration_s} | ${r.api_s} | ${r.jev.wait_s} | ${r.turns} | ${k(c.input + c.cache_read + c.cache_write)} | ${k(c.output)} | ${c.cost_usd.toFixed(2)} | ${r.jev.calls}${jev} | ${k(r.jev.input_tokens)} | ${r.jev.cost_usd.toFixed(4)} | ${r.tool_calls} | ${tools} | ${r.jev.first_turn ?? "—"} |`);
 }

@@ -1,0 +1,12 @@
+[
+  {
+    "id": "a1",
+    "kind": "backend architecture rule, 24 controllers",
+    "question": "Our backend docs say controllers are thin HTTP adapters. Which API controllers don't live up to that, and how?"
+  },
+  {
+    "id": "a2",
+    "kind": "frontend taxonomy rule, 52 design-system files",
+    "question": "Which pieces under `app/src/design-system` are really tied to one specific feature or domain workflow, and by our own taxonomy should live in a feature instead?"
+  }
+]
