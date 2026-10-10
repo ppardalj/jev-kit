@@ -47,9 +47,9 @@ test("server: initialize echoes the protocol version and declares tools", async 
   assert.equal(result.serverInfo.name, "jev-files");
 });
 
-test("server: lists the five tools, each with a description and an object schema", async () => {
+test("server: lists the six tools, each with a description and an object schema", async () => {
   const { result } = await request("tools/list");
-  assert.deepEqual(result.tools.map((t: any) => t.name).sort(), ["ask_jev_file_bool", "ask_jev_file_choice", "ask_jev_file_score", "ask_jev_files", "pick_first_file"]);
+  assert.deepEqual(result.tools.map((t: any) => t.name).sort(), ["ask_jev", "ask_jev_file_bool", "ask_jev_file_choice", "ask_jev_file_score", "ask_jev_files", "pick_first_file"]);
   for (const t of result.tools) {
     assert.ok(t.description.length > 50, t.name);
     assert.equal(t.inputSchema.type, "object");
@@ -57,10 +57,10 @@ test("server: lists the five tools, each with a description and an object schema
   }
 });
 
-test("server: only ask_jev_files asks Claude Code to load it up front", async () => {
+test("server: only ask_jev_files and ask_jev ask Claude Code to load them up front", async () => {
   const { result } = await request("tools/list");
   const always = result.tools.filter((t: any) => t._meta?.["anthropic/alwaysLoad"] === true).map((t: any) => t.name);
-  assert.deepEqual(always, ["ask_jev_files"]);
+  assert.deepEqual(always.sort(), ["ask_jev", "ask_jev_files"]);
 });
 
 test("server: ask_jev_file_bool resolves paths against JEV_ROOT and reports the session ledger", async () => {
@@ -84,6 +84,28 @@ test("server: ask_jev_files returns the compact shape over a glob", async () => 
 test("server: ask_jev_files also takes the question block as an object", async () => {
   const result = await call("ask_jev_files", { paths_or_globs: ["docs/api.md"], questions_json: { q: { type: "noul", instructions: "Is `content` docs?" } } });
   assert.equal(JSON.parse(result.content[0].text).calls, 1);
+});
+
+test("server: ask_jev answers about own state plus files in one call", async () => {
+  const questions = { kind: { type: "choice", instructions: "What is `text` about?", criteria: { billing: "Money", auth: "Login", other: "Neither" } }, docs: { type: "noul", instructions: "Does files mention rate limits?" } };
+  const result = await call("ask_jev", { state: "customer says proration is off by a cent", paths: ["src/domain/billing.ts", "docs"], questions_json: questions });
+  assert.equal(result.isError, undefined);
+  const body = JSON.parse(result.content[0].text);
+  assert.ok(["billing", "auth", "other"].includes(body.answers.kind.choice));
+  assert.equal(typeof body.answers.docs.noul, "number");
+  assert.deepEqual(body.state_summary.files, ["docs/api.md", "src/domain/billing.ts"]);
+  assert.deepEqual(body.state_summary.own_fields, ["text"]);
+  assert.ok(body.jev_session.calls >= 1);
+});
+
+test("server: ask_jev refuses an empty situation with the reason, and is bound by the file limit", async () => {
+  const empty = await call("ask_jev", { questions_json: { q: { type: "noul", instructions: "x?" } } });
+  assert.equal(empty.isError, true);
+  assert.match(empty.content[0].text, /^ask_jev: nothing to judge/);
+  const strict = startServer({ JEV_MAX_FILES: "1" });
+  const refused = await strict.call("ask_jev", { paths: ["src"], questions_json: { q: { type: "noul", instructions: "x?" } } });
+  assert.equal(refused.isError, true);
+  assert.match(refused.content[0].text, /^refused, nothing sent: 3 files/);
 });
 
 test("server: an absolute path inside the repo works and comes back repo-relative", async () => {

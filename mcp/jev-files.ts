@@ -1,9 +1,10 @@
 /**
- * MCP server (stdio) exposing Levels 8 and 9 of ten-levels-of-jev to Claude Code.
- * The code under ./src is a copy of ten-levels-of-jev (apps/ten-levels/src: core, level08, level09), owned here.
+ * MCP server (stdio) exposing Levels 8, 9 and 10 of ten-levels-of-jev to Claude Code.
+ * The code under ./src is a copy of ten-levels-of-jev (apps/ten-levels/src: core, level08, level09, level10), owned here.
  *
  *   ask_jev_file_bool / ask_jev_file_choice / ask_jev_file_score   one file, one question (L8)
  *   ask_jev_files / pick_first_file                                many files in parallel, then a pick (L9)
+ *   ask_jev                                                        any state plus up to 20 files, any questions, one call (L10)
  *
  * Code reads the files and sends them to Jev; the agent only gets typed answers.
  * Zero dependencies: newline-delimited JSON-RPC over stdin/stdout, run with plain `node` (type stripping).
@@ -19,6 +20,7 @@ import { jev } from "./src/core/client.ts";
 import type { Questions, State } from "./src/core/types.ts";
 import { askFileBool, askFileChoice, askFileScore, FileStateError } from "./src/levels/level08/index.ts";
 import { askFiles, parseQuestions, pickFirstFile } from "./src/levels/level09/index.ts";
+import { ASK_JEV_DESCRIPTION, AskStateError, askJev } from "./src/levels/level10/index.ts";
 import { Budget, BudgetError, estimateTokens, readLimits } from "./budget.ts";
 import { compactFiles } from "./format.ts";
 
@@ -149,6 +151,31 @@ const TOOLS: Record<string, { description: string; inputSchema: object; alwaysLo
     },
     run: (p, decide) => pickFirstFile(p.question, p.candidates, decide),
   },
+  ask_jev: {
+    description: ASK_JEV_DESCRIPTION,
+    inputSchema: {
+      type: "object",
+      properties: {
+        questions_json: str("The question block, a JSON object keyed by question id, as a JSON string"),
+        state: str("Your own state: plain text, or a JSON object as a string. For what only you can say; not for pasting files."),
+        paths: { type: "array", items: { type: "string" }, description: `Files, directories, or globs for code to read into files["path"], ${PATH}. Up to 20 files. Start a pattern with ! to leave files out.` },
+      },
+      required: ["questions_json"],
+    },
+    run: async (p, decide) => {
+      const questionsJson = typeof p.questions_json === "string" ? p.questions_json : JSON.stringify(p.questions_json);
+      let release = () => {};
+      const beforeCall = ({ summary }: { summary: { files: string[]; tokens: number } }) => {
+        release = budget.admit({ files: summary.files.length, tokens: summary.tokens + estimateTokens(0, 1, questionsJson.length) });
+      };
+      try {
+        return await askJev({ state: p.state, paths: p.paths }, questionsJson, ROOT, { decide, beforeCall });
+      } finally {
+        release();
+      }
+    },
+    alwaysLoad: true,
+  },
 };
 
 async function callTool(name: string, args: any) {
@@ -165,7 +192,7 @@ async function callTool(name: string, args: any) {
     return { content: [{ type: "text", text }] };
   } catch (err: any) {
     log(`${name} failed: ${err?.message ?? err}`);
-    const verbatim = err instanceof FileStateError || err instanceof BudgetError;
+    const verbatim = err instanceof FileStateError || err instanceof BudgetError || err instanceof AskStateError;
     return { content: [{ type: "text", text: verbatim ? err.message : `error: ${err?.message ?? err}` }], isError: true };
   }
 }

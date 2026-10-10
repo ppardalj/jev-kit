@@ -6,7 +6,7 @@ Claude Code plugin with tools and skills built on [Jev](https://typesafe.ai), Ty
 
 | Component | What it does |
 |---|---|
-| `jev-files` MCP server | `ask_jev_file_bool`, `ask_jev_file_choice`, `ask_jev_file_score`: one judgment about one file. `ask_jev_files`: the same questions over many files in parallel, over paths or globs relative to the repo root or absolute, with `!` patterns to leave files out; Claude Code loads it up front. `pick_first_file`: which of them to open first. File contents go to Jev, never into Claude's context. |
+| `jev-files` MCP server | `ask_jev_file_bool`, `ask_jev_file_choice`, `ask_jev_file_score`: one judgment about one file. `ask_jev_files`: the same questions over many files in parallel, over paths or globs relative to the repo root or absolute, with `!` patterns to leave files out; Claude Code loads it up front. `pick_first_file`: which of them to open first. `ask_jev`: the generic primitive, any question block about Claude's own state plus up to 20 files, in one call; for building skills on Jev, also loaded up front. File contents go to Jev, never into Claude's context. |
 | `jev-files` skill | Tells Claude when to ask Jev about a file instead of reading it. |
 
 ## Install
@@ -34,8 +34,8 @@ Every tool call is checked against three limits before anything goes to Jev. A r
 
 | Option | Default | Refuses |
 |---|---|---|
-| `max_files_per_call` | 50 | an `ask_jev_files` pattern that matches more files |
-| `max_tokens_per_call` | 500,000 | an `ask_jev_files` call whose files add up to more estimated tokens (text bytes / 4, plus about 500 per call) |
+| `max_files_per_call` | 50 | an `ask_jev_files` or `ask_jev` call whose paths match more files |
+| `max_tokens_per_call` | 500,000 | an `ask_jev_files` or `ask_jev` call whose state adds up to more estimated tokens (text bytes / 4, plus about 500 per call) |
 | `max_usd_per_session` | $0.50 | every tool, once the session has spent this much; calls in flight count toward it |
 
 A session is one Claude Code session; restarting starts a new budget. The cost is OpenRouter's reported cost, estimated from the session's rate when it is missing. Change the limits with `/plugin configure jev-kit@jev-kit`; Claude Code stores them per user, not per project. They protect against a broad pattern or a looping agent within one session. For a hard monthly cap across sessions and machines, set a credit limit on the OpenRouter key.
