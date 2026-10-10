@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "jev-files": {
+      "command": "node",
+      "args": ["--disable-warning=ExperimentalWarning", "mcp/jev-files.ts"]
+    }
+  }
+}
