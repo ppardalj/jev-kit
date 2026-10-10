@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "jev-kit",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Jev-powered tools for Claude Code: cheap typed judgments about files without reading them into context.",
   "author": {
     "name": "Pedro Pardal",

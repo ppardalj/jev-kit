@@ -1,0 +1,12 @@
+{
+  "name": "jev-kit",
+  "private": true,
+  "type": "module",
+  "description": "Jev-powered tools and skills for Claude Code. No dependencies: the MCP server and its tests run on plain Node.",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "test": "node --disable-warning=ExperimentalWarning --test \"mcp/tests/*.test.ts\""
+  }
+}

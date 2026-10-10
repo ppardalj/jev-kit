@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests on Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22.18 is the oldest Node that runs .ts without a flag, the floor package.json declares.
+        node: ["22.18", "24"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+      # No install step: there are no dependencies. The tests run on Jev's offline mock, no secrets.
+      - run: npm test
+
+  validate:
+    name: Plugin manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - run: npm install --global @anthropic-ai/claude-code
+      - run: claude plugin validate .

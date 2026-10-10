@@ -34,4 +34,4 @@ The tools send the text of the files you point them at to OpenRouter and TypeSaf
 
 ## Development
 
-See `.claude/CLAUDE.md`. `mcp/src` holds code adapted from ten-levels-of-jev, MIT licensed; its notice is in `mcp/src/LICENSE`.
+`npm test` runs the suite on Jev's offline mock, no install, no key. See `.claude/CLAUDE.md`. `mcp/src` holds code adapted from ten-levels-of-jev, MIT licensed; its notice is in `mcp/src/LICENSE`.
